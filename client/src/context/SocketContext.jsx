@@ -8,7 +8,7 @@ export function SocketProvider({ children }) {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const s = io("https://unbelonging-noncrenated-lanelle.ngrok-free.dev", {
+    const s = io("https://cricket-auction-game-oavt.onrender.com", {
       transports: ["websocket", "polling"]
     });
     s.on('connect', () => setConnected(true));
