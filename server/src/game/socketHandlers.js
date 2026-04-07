@@ -1,4 +1,4 @@
-import { players } from '../../../shared/players.js';
+import { players as gamePlayers } from '../../../shared/players.js';
 import { GAME_PHASES, ROOM_PRESETS, MATCH_ROUND_OPTIONS, MIN_PLAYERS, DEFAULT_MONEY_CR, AUCTION_BASE_PRICE_CR } from '../../../shared/types.js';
 import { decideWinner } from '../../../shared/engine/compare.js';
 
@@ -130,7 +130,7 @@ export function setupGameHandlers(io, socket, { rooms, players, getRoom, createR
     const allReady = room.players.length >= MIN_PLAYERS && room.players.every((pl) => pl.ready);
     if (!allReady) return;
     const cfg = getRoomConfig(room);
-    const playerPool = shuffleArray([...(players || [])]);
+    const playerPool = shuffleArray([...(gamePlayers || [])]);
     room.auction.playerPool = playerPool;
     room.auction.currentPlayerIndex = 0;
     room.auction.bidsMap = {};
