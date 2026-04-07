@@ -62,9 +62,12 @@ export default function Auction() {
   const allTeams = [...IPL_TEAMS, ...INTERNATIONAL_TEAMS];
   const getTeam = (id) => allTeams.find((t) => t.id === id);
 
-  const formatKey = room?.format === 'IPL' ? 'T20' : room?.format;
-  const currentOverall = currentPlayer?.stats?.[formatKey]?.overall ?? currentPlayer?.stats?.T20?.overall ?? 70;
-  const currentStats = currentPlayer?.stats?.[formatKey] || currentPlayer?.stats?.T20 || {};
+  const playerT20 =
+    currentPlayer?.t20 ||
+    currentPlayer?.stats?.T20 ||
+    currentPlayer?.stats?.[room?.format === 'IPL' ? 'T20' : room?.format] ||
+    {};
+  const currentOverall = playerT20?.overall ?? '-';
   const highestBidder = room?.players?.find((p) => p.socketId === room?.auction?.highestBidder);
   const roleEmoji = currentPlayer?.role === 'Bowler' ? '🎯' : currentPlayer?.role === 'All-Rounder' ? '⚡' : currentPlayer?.role === 'WK' ? '🧤' : '🏏';
 
@@ -105,13 +108,13 @@ export default function Auction() {
               <p className="text-emerald-300 text-lg mt-1">{roleEmoji} {currentPlayer.role}</p>
               <div className="mt-3 text-sm text-emerald-200">
                 {(currentPlayer.role === 'Batsman' || currentPlayer.role === 'WK') && (
-                  <p>Avg: {currentStats.battingAvg ?? '-'} | SR: {currentStats.strikeRate ?? '-'}</p>
+                  <p>Avg: {currentPlayer?.t20?.battingAvg ?? playerT20?.battingAvg ?? '-'} | SR: {currentPlayer?.t20?.strikeRate ?? playerT20?.strikeRate ?? '-'}</p>
                 )}
                 {currentPlayer.role === 'Bowler' && (
-                  <p>Wkts: {currentStats.wickets ?? '-'} | Eco: {currentStats.economy ?? '-'}</p>
+                  <p>Wkts: {currentPlayer?.t20?.wickets ?? playerT20?.wickets ?? '-'} | Eco: {currentPlayer?.t20?.economy ?? playerT20?.economy ?? '-'}</p>
                 )}
                 {currentPlayer.role === 'All-Rounder' && (
-                  <p>Avg: {currentStats.battingAvg ?? '-'} | SR: {currentStats.strikeRate ?? '-'} | Wkts: {currentStats.wickets ?? '-'}</p>
+                  <p>Avg: {currentPlayer?.t20?.battingAvg ?? playerT20?.battingAvg ?? '-'} | SR: {currentPlayer?.t20?.strikeRate ?? playerT20?.strikeRate ?? '-'} | Wkts: {currentPlayer?.t20?.wickets ?? playerT20?.wickets ?? '-'}</p>
                 )}
               </div>
               <p className="inline-block mt-3 px-3 py-1 rounded-full bg-amber-900/40 text-cricket-gold text-sm font-semibold">
