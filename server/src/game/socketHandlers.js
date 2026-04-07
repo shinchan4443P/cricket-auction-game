@@ -135,6 +135,8 @@ export function setupGameHandlers(io, socket, { rooms, players, getRoom, createR
     room.auction.currentPlayerIndex = 0;
     room.auction.bidsMap = {};
     room.auction.bidsThisRound = new Set();
+    room.auction.highestBid = 0;
+    room.auction.highestBidder = null;
     room.auction.revealedWinner = null;
     room.auction.lastSold = null;
     room.phase = GAME_PHASES.AUCTION;
@@ -182,13 +184,20 @@ export function setupGameHandlers(io, socket, { rooms, players, getRoom, createR
     const minBid = AUCTION_BASE_PRICE_CR;
     const bidAmount = Number(amount);
     if (!Number.isFinite(bidAmount)) return;
-    if (!playerData || playerData.money < bidAmount || room.auction.bidsThisRound?.has(socket.id)) return;
+    if (!playerData || playerData.money < bidAmount) return;
+    if ((room.auction.timeLeft ?? 0) <= 0) return;
     if (playerData.squad.length >= squadSize) return;
     if (!canBidOnPlayer(playerData, currentPlayerCard, room)) return;
     room.auction.bidsMap = room.auction.bidsMap || {};
     if (bidAmount < minBid) return;
+    const currentHighest = room.auction.highestBid || 0;
+    if (bidAmount <= currentHighest) {
+      socket.emit('auction:bidRejected', { msg: `Bid must be higher than ₹${currentHighest} Cr` });
+      return;
+    }
     room.auction.bidsMap[socket.id] = bidAmount;
-    room.auction.bidsThisRound.add(socket.id);
+    room.auction.highestBid = bidAmount;
+    room.auction.highestBidder = socket.id;
     io.to(socket.id).emit('auction:bidPlaced', { amount });
     io.to(room.id).emit('auction:update', sanitizeRoomForAuction(room));
   });
@@ -263,10 +272,6 @@ function sanitizeRoomForAuction(room) {
   const r = JSON.parse(JSON.stringify(room));
   if (r.auction) {
     delete r.auction.bidsMap;
-    if (!r.auction.revealedWinner) {
-      r.auction.highestBid = null;
-      r.auction.highestBidder = null;
-    }
   }
   return r;
 }
@@ -321,6 +326,8 @@ function startAuctionTimer(io, room) {
   room.auction.timeLeft = cfg.auctionTimer ?? 30;
   room.auction.bidsThisRound = new Set();
   room.auction.bidsMap = {};
+  room.auction.highestBid = 0;
+  room.auction.highestBidder = null;
   room.auction.revealedWinner = null;
 
   const tick = () => {

@@ -11,15 +11,17 @@ export default function Auction() {
   const [room, setRoom] = useState(location.state?.room ?? null);
   const [bidAmount, setBidAmount] = useState(0);
   const [expandedTeam, setExpandedTeam] = useState(null);
+  const [bidError, setBidError] = useState('');
 
   useEffect(() => {
     if (!socket) return;
     const handlers = {
-      'auction:start': (r) => { setRoom(r); setBidAmount(0); },
-      'auction:next': (r) => { setRoom(r); setBidAmount(0); },
+      'auction:start': (r) => { setRoom(r); setBidAmount(0); setBidError(''); },
+      'auction:next': (r) => { setRoom(r); setBidAmount(0); setBidError(''); },
       'auction:update': (r) => setRoom(r),
       'auction:tick': (r) => setRoom(r),
       'auction:roundEnd': (r) => setRoom(r),
+      'auction:bidRejected': ({ msg }) => setBidError(msg || 'Invalid bid'),
       'match:start': (r) => {
         setRoom(r);
         navigate(`/room/${roomId}/match`, { state: { room: r } });
@@ -35,16 +37,23 @@ export default function Auction() {
   const squadSize = cfg.squadSize ?? 12;
   const currentPlayer = room?.auction?.playerPool?.[room.auction.currentPlayerIndex];
   const me = room?.players?.find((p) => p.socketId === socket?.id);
-  const hasBid = room?.auction?.bidsThisRound?.has?.(socket?.id);
   const basePrice = AUCTION_BASE_PRICE_CR;
   const isHost = room?.hostId === socket?.id;
   const lastSold = room?.auction?.lastSold;
 
   const placeBid = () => {
-    if (!socket || !room || hasBid) return;
+    if (!socket || !room) return;
     const amt = parseInt(bidAmount, 10) || basePrice;
-    if (me && me.money >= amt && amt >= basePrice) {
+    const currentHighest = room?.auction?.highestBid || 0;
+    if (amt <= currentHighest) {
+      setBidError(`Bid must be higher than ₹${currentHighest} Cr`);
+      return;
+    }
+    if (me && me.money >= amt && amt >= basePrice && (room?.auction?.timeLeft ?? 0) > 0) {
+      setBidError('');
       socket.emit('auction:bid', { amount: amt });
+    } else if (me && me.money < amt) {
+      setBidError('Insufficient money');
     }
   };
 
@@ -55,6 +64,9 @@ export default function Auction() {
 
   const formatKey = room?.format === 'IPL' ? 'T20' : room?.format;
   const currentOverall = currentPlayer?.stats?.[formatKey]?.overall ?? currentPlayer?.stats?.T20?.overall ?? 70;
+  const currentStats = currentPlayer?.stats?.[formatKey] || currentPlayer?.stats?.T20 || {};
+  const highestBidder = room?.players?.find((p) => p.socketId === room?.auction?.highestBidder);
+  const roleEmoji = currentPlayer?.role === 'Bowler' ? '🎯' : currentPlayer?.role === 'All-Rounder' ? '⚡' : currentPlayer?.role === 'WK' ? '🧤' : '🏏';
 
   const leaveRoom = () => {
     if (!socket) return;
@@ -88,10 +100,23 @@ export default function Auction() {
 
         {currentPlayer ? (
           <div className="bg-emerald-950/50 rounded-2xl border border-emerald-700 p-8 mb-4">
-            <div className="text-center mb-4">
-              <div className="w-20 h-20 mx-auto mb-2 rounded-full bg-emerald-800/50 flex items-center justify-center text-3xl">🏏</div>
-              <h3 className="text-xl text-white font-semibold">{currentPlayer.name}</h3>
-              <p className="text-emerald-300 text-sm">{currentPlayer.role} • Overall {currentOverall}</p>
+            <div className="text-center mb-5">
+              <h3 className="text-3xl text-white font-bold tracking-wide">{currentPlayer.name}</h3>
+              <p className="text-emerald-300 text-lg mt-1">{roleEmoji} {currentPlayer.role}</p>
+              <div className="mt-3 text-sm text-emerald-200">
+                {(currentPlayer.role === 'Batsman' || currentPlayer.role === 'WK') && (
+                  <p>Avg: {currentStats.battingAvg ?? '-'} | SR: {currentStats.strikeRate ?? '-'}</p>
+                )}
+                {currentPlayer.role === 'Bowler' && (
+                  <p>Wkts: {currentStats.wickets ?? '-'} | Eco: {currentStats.economy ?? '-'}</p>
+                )}
+                {currentPlayer.role === 'All-Rounder' && (
+                  <p>Avg: {currentStats.battingAvg ?? '-'} | SR: {currentStats.strikeRate ?? '-'} | Wkts: {currentStats.wickets ?? '-'}</p>
+                )}
+              </div>
+              <p className="inline-block mt-3 px-3 py-1 rounded-full bg-amber-900/40 text-cricket-gold text-sm font-semibold">
+                Overall: {currentOverall}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4 text-center">
               <div className="bg-emerald-900/30 rounded-lg py-2">
@@ -99,21 +124,34 @@ export default function Auction() {
                 <p className="text-cricket-gold font-bold">₹{basePrice} Cr</p>
               </div>
               <div className="bg-emerald-900/30 rounded-lg py-2">
-                <p className="text-emerald-400 text-xs">Highest Bid</p>
-                <p className="text-cricket-gold font-bold">{room.auction.highestBid != null ? `${room.auction.highestBid} (sold)` : 'Hidden'}</p>
+                <p className="text-emerald-400 text-xs">Current Bid</p>
+                <p className="text-cricket-gold font-bold">
+                  ₹{room.auction?.highestBid || basePrice} Cr{highestBidder ? ` by ${highestBidder.name}` : ''}
+                </p>
               </div>
             </div>
             <div className="text-center mb-4">
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-900/50 text-xl font-bold text-cricket-gold">{room.auction?.timeLeft ?? 0}</div>
               <p className="text-emerald-400 text-xs mt-1">seconds left</p>
             </div>
-            {!hasBid && room.auction?.timeLeft > 0 && (
-              <div className="flex gap-3">
-                <input type="number" value={bidAmount || ''} onChange={(e) => setBidAmount(e.target.value)} placeholder={basePrice} min={basePrice} className="flex-1 px-4 py-3 bg-emerald-950 border border-emerald-700 rounded-lg text-white" />
-                <button onClick={placeBid} disabled={me?.money < (parseInt(bidAmount, 10) || basePrice) || (me?.squad?.length ?? 0) >= squadSize} className="px-6 py-3 bg-cricket-gold text-cricket-dark font-semibold rounded-lg hover:bg-amber-400 disabled:opacity-50">BID</button>
-              </div>
-            )}
-            {hasBid && <p className="text-center text-emerald-400 text-sm">Bid placed (hidden)</p>}
+            <div className="flex gap-3">
+              <input
+                type="number"
+                value={bidAmount || ''}
+                onChange={(e) => setBidAmount(e.target.value)}
+                placeholder={String((room.auction?.highestBid || basePrice) + 1)}
+                min={(room.auction?.highestBid || basePrice) + 1}
+                className="flex-1 px-4 py-3 bg-emerald-950 border border-emerald-700 rounded-lg text-white"
+              />
+              <button
+                onClick={placeBid}
+                disabled={(room?.auction?.timeLeft ?? 0) <= 0 || me?.money < (parseInt(bidAmount, 10) || ((room.auction?.highestBid || basePrice) + 1))}
+                className="px-6 py-3 bg-cricket-gold text-cricket-dark font-semibold rounded-lg hover:bg-amber-400 disabled:opacity-50"
+              >
+                BID
+              </button>
+            </div>
+            {bidError && <p className="text-amber-400 text-sm text-center mt-2">{bidError}</p>}
             {isHost && room.auction?.timeLeft > 0 && (
               <button onClick={() => socket.emit('auction:forceNext')} className="mt-3 w-full py-2 bg-amber-600 text-white text-sm rounded-lg">End bid (Admin)</button>
             )}
